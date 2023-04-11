@@ -1,0 +1,81 @@
+---
+title: "TAZ_aggregation"
+author: "Joe Delorto"
+format: 
+  html:
+    self-contained: true
+warning: false
+message: false
+---
+
+This document will detail the process of aggregating CTPS's data on open space/park access and essential places to the transportation analysis zone (TAZ) level.
+
+As required by federal regulations, the Boston Region MPO's long-range transportation plan (LRTP), _Destination 2050_, will include an equity analysis of the projects in the MPO's Recommended Plan. For _Destination 2050_, this will include information on how, if at all, the Recommended Plan projects will change access to these places (as well as jobs, higher education, and healthcare facilities) and how these changes might have disproportionate impacts or disparate burdens (DI/DB) on minority and low-income populations as compared to nonminority and non-low-income populations, respectively.
+
+For _Destination 2050_, CTPS developed a new regional travel demand model, Travel Demand Model 2023 (TDM23). Similar to previous versions of TDM and other regional travel demand models, TDM23 uses a unit of geographic analysis known as the TAZ. Thus, to measure access to open spaces and essential places, we must have TAZ-level information on access to these places.
+
+```{r}
+library(sf)
+library(tidyverse)
+```
+
+To begin, we load the shapefile that contains the model area's TAZs.
+
+```{r}
+taz_shapes <- sf::read_sf("data/TAZ_shapefiles/CTPS_TDM23_TAZ_2017g_v202303.shp")
+```
+
+```{r}
+ggplot(data = taz_shapes) + geom_sf()
+```
+
+## Parks and Open Spaces
+
+For the purposes of parks and open spaces, we will be measuring each TAZ's "access" to parks and open spaces by counting the number of park access points in each TAZ. Access points were generated previously and are based on the OpenStreetMap pedestrian and drive networks.
+
+```{r}
+open_space_access_points <- sf::read_sf("data/DestinationData.gpkg", layer = "OpenSpaceAccess_PT")
+```
+
+Now we merge the access points with the TAZ layer to associate each access point with the TAZ in which it is located.
+
+```{r}
+os_access_points_TAZ_merge <- sf::st_intersection(taz_shapes, open_space_access_points)
+```
+
+We then tally the number of access points in each TAZ, keeping only the pertinent information.
+
+```{r}
+os_access_points_counted <- os_access_points_TAZ_merge %>% 
+  count(taz_id) %>% 
+  st_drop_geometry()
+
+## show the first few rows as an example of the output
+print(head(os_access_points_counted, 10))
+```
+
+As shown above, because not every TAZ has an access point inside it, we don't have a clean list of the number of access points inside each TAZ. We need to add in the TAZs with zero counts to get a clean list from 1 through 5839.
+
+```{r}
+## vector of proper size to store counts
+count <- rep(0, times = 5839)
+
+## go through the existing output and assign it to the new vector in the proper location
+for(i in 1:nrow(os_access_points_counted)) {
+  j <- as.numeric(os_access_points_counted[i, 1]) ## TAZ ID, i.e. where in the new vector the count should go
+  n <- as.numeric(os_access_points_counted[i, 2]) ## number of access points in TAZ "j"
+  
+  count[j] <- n
+}
+
+## turn this vector into a matrix containing TAZ IDs
+os_access_points_by_TAZ <- matrix(nrow = 5839, ncol = 2)
+os_access_points_by_TAZ[, 1] <- 1:5839
+os_access_points_by_TAZ[, 2] <- count
+colnames(os_access_points_by_TAZ) <- c("taz_id", "n")
+
+## show the first few rows as an example of the new and improved output
+print(head(os_access_points_by_TAZ, 10))
+```
+
+Now we have a clean list of every TAZ and the number of park/open space access points it contains.
