@@ -14,19 +14,21 @@ As required by federal regulations, the Boston Region MPO's long-range transport
 
 For _Destination 2050_, CTPS developed a new regional travel demand model, Travel Demand Model 2023 (TDM23). Similar to previous versions of TDM and other regional travel demand models, TDM23 uses a unit of geographic analysis known as the TAZ. Thus, to measure access to open spaces and essential places, we must have TAZ-level information on access to these places.
 
+Let's load the necessary packages to enable this analysis.
+
 ```{r}
 library(sf)
 library(tidyverse)
+library(viridis)
 ```
 
-To begin, we load the shapefile that contains the model area's TAZs.
+To begin, we load the shapefile that contains the model area's TAZs and filter them down to the Boston MPO region.
 
 ```{r}
 taz_shapes <- sf::read_sf("data/TAZ_shapefiles/CTPS_TDM23_TAZ_2017g_v202303.shp")
-```
 
-```{r}
-ggplot(data = taz_shapes) + geom_sf()
+mpo_tazs <- taz_shapes %>%
+  filter(mpo == "BRMPO")
 ```
 
 ## Parks and Open Spaces
@@ -37,10 +39,15 @@ For the purposes of parks and open spaces, we will be measuring each TAZ's "acce
 open_space_access_points <- sf::read_sf("data/DestinationData.gpkg", layer = "OpenSpaceAccess_PT")
 ```
 
+```{r}
+ggplot(data = open_space_access_points) + 
+  geom_sf() 
+```
+
 Now we merge the access points with the TAZ layer to associate each access point with the TAZ in which it is located.
 
 ```{r}
-os_access_points_TAZ_merge <- sf::st_intersection(taz_shapes, open_space_access_points)
+os_access_points_TAZ_merge <- sf::st_intersection(mpo_tazs, open_space_access_points)
 ```
 
 We then tally the number of access points in each TAZ, keeping only the pertinent information.
@@ -54,28 +61,50 @@ os_access_points_counted <- os_access_points_TAZ_merge %>%
 print(head(os_access_points_counted, 10))
 ```
 
-As shown above, because not every TAZ has an access point inside it, we don't have a clean list of the number of access points inside each TAZ. We need to add in the TAZs with zero counts to get a clean list from 1 through 5839.
-
+As shown above, because not every TAZ has an access point inside it, we don't have a clean list of the number of access points inside each TAZ. We need to add in the TAZs with zero counts to get a clean list of every TAZ in the MPO region.
+ 
 ```{r}
-## vector of proper size to store counts
-count <- rep(0, times = 5839)
+taz_id <- sort(st_drop_geometry(mpo_tazs)$taz_id)
+n <- rep(0, times = length(taz_id))
+os_access_points_by_TAZ <- data.frame(taz_id, n)
 
-## go through the existing output and assign it to the new vector in the proper location
-for(i in 1:nrow(os_access_points_counted)) {
-  j <- as.numeric(os_access_points_counted[i, 1]) ## TAZ ID, i.e. where in the new vector the count should go
-  n <- as.numeric(os_access_points_counted[i, 2]) ## number of access points in TAZ "j"
+for (i in 1:nrow(os_access_points_counted)){
+  ## i is the row in the incomplete list of TAZs
+  ## j is the row in the complete list of TAZs that we're trying to fill
+  j <- which(os_access_points_by_TAZ$taz_id == os_access_points_counted$taz_id[i])
+  m <- os_access_points_counted[i, 2]
   
-  count[j] <- n
+  os_access_points_by_TAZ[j, 2] <- m
 }
 
-## turn this vector into a matrix containing TAZ IDs
-os_access_points_by_TAZ <- matrix(nrow = 5839, ncol = 2)
-os_access_points_by_TAZ[, 1] <- 1:5839
-os_access_points_by_TAZ[, 2] <- count
-colnames(os_access_points_by_TAZ) <- c("taz_id", "n")
-
-## show the first few rows as an example of the new and improved output
-print(head(os_access_points_by_TAZ, 10))
+print(head(os_access_points_by_TAZ))
 ```
 
-Now we have a clean list of every TAZ and the number of park/open space access points it contains.
+Now we have a clean list of every TAZ in the Boston MPO region and the number of park/open space access points in each TAZ. Let's map the results:
+
+```{r}
+library(viridis)
+
+mpo_tazs_with_os_counts <- mpo_tazs %>% 
+  left_join(os_access_points_by_TAZ, copy = TRUE)
+
+ggplot(mpo_tazs_with_os_counts, aes(fill = n)) + 
+  geom_sf() + 
+  scale_fill_viridis_c()
+```
+
+For a more illustrative example, let's visit downtown Boston—specifically, TAZs 1 through 100. The bright yellow TAZ in the middle contains Boston Common and the Public Garden. The green TAZ to its upper left contains the Charles River Esplanade. These are both locations where we would expect to see many park/open space access points.
+
+```{r}
+first_few_tazs <- mpo_tazs_with_os_counts %>% 
+  filter(taz_id <= 100)
+
+ggplot(first_few_tazs, aes(fill = n)) + 
+  geom_sf() + 
+  scale_fill_viridis_c()
+```
+
+```{r}
+write_csv(os_access_points_by_TAZ, "output/open_space_access_points_by_TAZ.csv")
+```
+
