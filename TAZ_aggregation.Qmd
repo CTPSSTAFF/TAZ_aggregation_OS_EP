@@ -47,13 +47,13 @@ ggplot(data = open_space_access_points) +
 Now we merge the access points with the TAZ layer to associate each access point with the TAZ in which it is located.
 
 ```{r}
-os_access_points_TAZ_merge <- sf::st_intersection(mpo_tazs, open_space_access_points)
+os_taz_join <- sf::st_intersection(mpo_tazs, open_space_access_points)
 ```
 
 We then tally the number of access points in each TAZ, keeping only the pertinent information.
 
 ```{r}
-os_access_points_counted <- os_access_points_TAZ_merge %>% 
+os_access_points_counted <- os_taz_join %>% 
   count(taz_id) %>% 
   st_drop_geometry()
 
@@ -83,8 +83,6 @@ print(head(os_access_points_by_TAZ))
 Now we have a clean list of every TAZ in the Boston MPO region and the number of park/open space access points in each TAZ. Let's map the results:
 
 ```{r}
-library(viridis)
-
 mpo_tazs_with_os_counts <- mpo_tazs %>% 
   left_join(os_access_points_by_TAZ, copy = TRUE)
 
@@ -96,10 +94,10 @@ ggplot(mpo_tazs_with_os_counts, aes(fill = n)) +
 For a more illustrative example, let's visit downtown Boston—specifically, TAZs 1 through 100. The bright yellow TAZ in the middle contains Boston Common and the Public Garden. The green TAZ to its upper left contains the Charles River Esplanade. These are both locations where we would expect to see many park/open space access points.
 
 ```{r}
-first_few_tazs <- mpo_tazs_with_os_counts %>% 
+first_few_tazs_os <- mpo_tazs_with_os_counts %>% 
   filter(taz_id <= 100)
 
-ggplot(first_few_tazs, aes(fill = n)) + 
+ggplot(first_few_tazs_os, aes(fill = n)) + 
   geom_sf() + 
   scale_fill_viridis_c()
 ```
@@ -108,3 +106,52 @@ ggplot(first_few_tazs, aes(fill = n)) +
 write_csv(os_access_points_by_TAZ, "output/open_space_access_points_by_TAZ.csv")
 ```
 
+## Essential Places
+
+"Essential places" are clusters each containing at least five essential destinations from at least two of the following categories: healthcare destinations, civic destinations, and food destinations. These clusters are then represented as polygons. For the purposes of our analysis, we will simply be scoring each TAZ by the presence of an essential places polygon, not by the number of polygons that intersect each TAZ.
+
+First, we load the essential places data.
+
+```{r}
+essential_places_polygons <- sf::read_sf("data/DestinationData.gpkg", layer = "essentialPlace_Final_POLY")
+```
+
+Now, we join the essential places to the TAZ layer, as above.
+
+```{r}
+ep_taz_join <- sf::st_intersection(select(mpo_tazs, taz_id), essential_places_polygons)
+```
+
+Now we repeat the same process as above to get to a clean list of all TAZs in the MPO region.
+
+```{r}
+ep_present <- rep(0, times = length(taz_id))
+ep_presence_by_taz <- data.frame(taz_id, ep_present)
+
+for (i in 1:nrow(ep_presence_by_taz)){
+  ep_presence_by_taz[i, 2] <- as.integer(ep_presence_by_taz[i, 1] %in% ep_taz_join$taz_id)
+}
+
+print(head(ep_presence_by_taz))
+```
+
+Same maps as above to verify:
+
+```{r}
+mpo_tazs_with_ep_presence <- 
+  mpo_tazs %>% left_join(ep_presence_by_taz)
+first_few_tazs_ep <- mpo_tazs_with_ep_presence %>% 
+  filter(taz_id <= 100)
+
+ggplot(data = mpo_tazs_with_ep_presence, aes(fill = as.logical(ep_present))) +
+  geom_sf()
+
+ggplot(data = first_few_tazs_ep, aes(fill = as.logical(ep_present))) +
+  geom_sf()
+```
+
+And finally, write the output to a .csv.
+
+```{r}
+write_csv(ep_presence_by_taz, "output/essential_place_presence_by_TAZ.csv")
+```
