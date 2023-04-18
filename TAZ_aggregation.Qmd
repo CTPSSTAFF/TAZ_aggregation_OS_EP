@@ -8,23 +8,24 @@ warning: false
 message: false
 ---
 
-This document will detail the process of aggregating CTPS's data on open space/park access and essential places to the transportation analysis zone (TAZ) level.
+This document will detail the process of aggregating CTPS's data on healthcare facilities, open space/park access, and essential places to the transportation analysis zone (TAZ) level.
 
-As required by federal regulations, the Boston Region MPO's long-range transportation plan (LRTP), _Destination 2050_, will include an equity analysis of the projects in the MPO's Recommended Plan. For _Destination 2050_, this will include information on how, if at all, the Recommended Plan projects will change access to these places (as well as jobs, higher education, and healthcare facilities) and how these changes might have disproportionate impacts or disparate burdens (DI/DB) on minority and low-income populations as compared to nonminority and non-low-income populations, respectively.
+As required by federal regulations, the Boston Region MPO's long-range transportation plan (LRTP), _Destination 2050_, will include an equity analysis of the projects in the MPO's Recommended Plan. For _Destination 2050_, this will include information on how, if at all, the Recommended Plan projects will change access to these places (as well as jobs and higher education) and how these changes might have disproportionate impacts or disparate burdens (DI/DB) on minority and low-income populations as compared to nonminority and non-low-income populations, respectively.
 
-For _Destination 2050_, CTPS developed a new regional travel demand model, Travel Demand Model 2023 (TDM23). Similar to previous versions of TDM and other regional travel demand models, TDM23 uses a unit of geographic analysis known as the TAZ. Thus, to measure access to open spaces and essential places, we must have TAZ-level information on access to these places.
+For _Destination 2050_, CTPS developed a new regional travel demand model, Travel Demand Model 2023 (TDM23). Similar to previous versions of TDM and other regional travel demand models, TDM23 uses a unit of geographic analysis known as the TAZ. Thus, to measure access to healthcare facilities, open spaces, and essential places, we must have TAZ-level information on access to these places.
 
 Let's load the necessary packages to enable this analysis.
 
 ```{r}
-library(sf)
-library(tidyverse)
-library(viridis)
+library(sf)           ## geospatial tools
+library(tidyverse)    ## statistical tools
+library(viridis)      ## colorblind- and grayscale-friendly color ramp
 ```
 
 To begin, we load the shapefile that contains the model area's TAZs and filter them down to the Boston MPO region.
 
 ```{r}
+## canonical TDM23 TAZ shapefile from Model Development group
 taz_shapes <- sf::read_sf("data/TAZ_shapefiles/CTPS_TDM23_TAZ_2017g_v202303.shp")
 
 mpo_tazs <- taz_shapes %>%
@@ -54,8 +55,8 @@ We then tally the number of access points in each TAZ, keeping only the pertinen
 
 ```{r}
 os_access_points_counted <- os_taz_join %>% 
-  count(taz_id) %>% 
-  st_drop_geometry()
+  st_drop_geometry() %>% ## teachable moment: doing this before count() speeds up the process by a factor of 10
+  count(taz_id)
 
 ## show the first few rows as an example of the output
 print(head(os_access_points_counted, 10))
@@ -69,7 +70,7 @@ n <- rep(0, times = length(taz_id))
 os_access_points_by_TAZ <- data.frame(taz_id, n)
 
 for (i in 1:nrow(os_access_points_counted)){
-  ## i is the row in the incomplete list of TAZs
+  ## i is the row in the incomplete list of TAZs that we're looping through and pulling values from
   ## j is the row in the complete list of TAZs that we're trying to fill
   j <- which(os_access_points_by_TAZ$taz_id == os_access_points_counted$taz_id[i])
   m <- os_access_points_counted[i, 2]
@@ -129,6 +130,7 @@ ep_present <- rep(0, times = length(taz_id))
 ep_presence_by_taz <- data.frame(taz_id, ep_present)
 
 for (i in 1:nrow(ep_presence_by_taz)){
+  ## to get 1/0 instead of TRUE/FALSE, we must wrap the logical expression in the function as.integer()
   ep_presence_by_taz[i, 2] <- as.integer(ep_presence_by_taz[i, 1] %in% ep_taz_join$taz_id)
 }
 
@@ -150,8 +152,83 @@ ggplot(data = first_few_tazs_ep, aes(fill = as.logical(ep_present))) +
   geom_sf()
 ```
 
-And finally, write the output to a .csv.
+And finally, write the output to a csv.
 
 ```{r}
 write_csv(ep_presence_by_taz, "output/essential_place_presence_by_TAZ.csv")
+```
+
+## Healthcare Facilities
+
+We will replicate both of the approaches seen above for healthcare facilities (it's nice to have options!). 
+
+First, read in the data. This data is in latitude/longitude format in a csv file, so we must convert it to a simple features (`sf`) point geometry.
+
+```{r}
+healthcare_lon_lat <- sf::read_sf("data/healthcare_facilities.csv")
+
+healthcare_points <- healthcare_lon_lat %>% 
+  st_as_sf(crs = "+proj=lonlat 26986", coords = c("lon","lat")) %>% ## convert table of lat/lon points to sf geometry
+  st_transform(st_crs(mpo_tazs)) ## use the same crs as the TAZ layer
+```
+
+Count the number of healthcare facilities per TAZ: 
+
+```{r}
+healthcare_taz_join <- sf::st_intersection(mpo_tazs, healthcare_points)
+
+healthcare_facilities_counted <- healthcare_taz_join %>% 
+  st_drop_geometry() %>% 
+  count(taz_id)
+
+healthcare_facilities_by_TAZ_count <- data_frame(taz_id, n)
+
+for (i in 1:nrow(healthcare_facilities_counted)){
+  ## i is the row in the incomplete list of TAZs that we're looping through and pulling values from
+  ## j is the row in the complete list of TAZs that we're trying to fill
+  j <- which(healthcare_facilities_by_TAZ_count$taz_id == healthcare_facilities_counted$taz_id[i])
+  m <- healthcare_facilities_counted[i, 2]
+  
+  healthcare_facilities_by_TAZ_count[j, 2] <- m
+}
+```
+
+Now we look at the results in Downtown Boston as an example:
+
+```{r}
+first_few_tazs_healthcare_count <- 
+  mpo_tazs %>% left_join(healthcare_facilities_by_TAZ_count) %>% 
+  filter(taz_id <= 100)
+
+ggplot(first_few_tazs_healthcare_count, aes(fill = n)) +
+  geom_sf() +
+  scale_fill_viridis_c()
+```
+
+Now let's repeat the process for presence of healthcare facilities:
+
+```{r}
+healthcare_present <- rep(0, times = length(taz_id))
+healthcare_presence_by_TAZ <- data.frame(taz_id, healthcare_present)
+
+for (i in 1:nrow(healthcare_presence_by_TAZ)){
+  healthcare_presence_by_TAZ[i, 2] <- as.integer(healthcare_presence_by_TAZ[i, 1] %in% healthcare_taz_join$taz_id)
+}
+```
+
+Let's see the example output in Downtown Boston:
+
+```{r}
+healthcare_presence_first_few <- mpo_tazs %>% 
+  left_join(healthcare_presence_by_TAZ) %>% 
+  filter(taz_id <= 100)
+
+ggplot(data = healthcare_presence_first_few, aes(fill = as.logical(healthcare_present))) + geom_sf()
+```
+
+Finally, we write the outputs to csv files:
+
+```{r}
+write_csv(healthcare_facilities_by_TAZ_count, "output/healthcare_facilities_by_TAZ.csv")
+write_csv(healthcare_presence_by_TAZ, "output/healthcare_presence_by_TAZ.csv")
 ```
