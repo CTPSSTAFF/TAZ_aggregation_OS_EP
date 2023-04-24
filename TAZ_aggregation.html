@@ -2689,7 +2689,7 @@ vertical-align: -.125em;
 </div>
 <p>As shown above, because not every TAZ has an access point inside it, we don’t have a clean list of the number of access points inside each TAZ. We need to add in the TAZs with zero counts to get a clean list of every TAZ in the MPO region.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>taz_id <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">st_drop_geometry</span>(mpo_tazs)<span class="sc">$</span>taz_id)</span>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>taz_id <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">st_drop_geometry</span>(taz_shapes)<span class="sc">$</span>taz_id)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">0</span>, <span class="at">times =</span> <span class="fu">length</span>(taz_id))</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>os_access_points_by_TAZ <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(taz_id, n)</span>
 <span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>

@@ -65,7 +65,7 @@ print(head(os_access_points_counted, 10))
 As shown above, because not every TAZ has an access point inside it, we don't have a clean list of the number of access points inside each TAZ. We need to add in the TAZs with zero counts to get a clean list of every TAZ in the MPO region.
  
 ```{r}
-taz_id <- sort(st_drop_geometry(mpo_tazs)$taz_id)
+taz_id <- sort(st_drop_geometry(taz_shapes)$taz_id)
 n <- rep(0, times = length(taz_id))
 os_access_points_by_TAZ <- data.frame(taz_id, n)
 
